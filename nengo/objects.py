@@ -389,6 +389,7 @@ class Connection(NengoObject):
 
         self.filter = filter
         self.modulatory = modulatory
+        self.learning_rule = kwargs.pop('learning_rule', None)
 
         if isinstance(self._pre, Ensemble):
             if isinstance(self._post, Ensemble):
@@ -421,6 +422,16 @@ class Connection(NengoObject):
 
     def add_to_network(self, network):
         network.connections.append(self)
+
+    @property
+    def learning_rule(self):
+        return self._learning_rule
+
+    @learning_rule.setter
+    def learning_rule(self, _learning_rule):
+        if _learning_rule is not None:
+            _learning_rule.connection = self
+        self._learning_rule = _learning_rule
 
     def _check_pre_ensemble(self, prop_name):
         if not isinstance(self._pre, Ensemble):
@@ -730,3 +741,88 @@ class Network(NengoObject):
             raise RuntimeError("Network context in bad state; was expecting "
                                "current context to be '%s' but instead got "
                                "'%s'." % (self, model))
+
+
+class LearningRule(object):
+    _learning_rate = 1e-5
+    _connection = None
+
+    @property
+    def learning_rate(self):
+        return self._learning_rate
+
+    @learning_rate.setter
+    def learning_rate(self, learning_rate):
+        self._learning_rate = learning_rate
+
+    @property
+    def connection(self):
+        return self._connection
+
+    @connection.setter
+    def connection(self, connection):
+        if self._connection is not None:
+            raise ValueError("Connection is already set and cannot be "
+                             "changed.")
+        self._connection = connection
+
+    def probe(self, probe):
+        raise NotImplementedError(
+            "Probe target '%s' is not probable" % probe.attr)
+
+    def __str__(self):
+        return self.__class__.__name__
+
+    def __repr__(self):
+        return str(self)
+
+
+class PES(LearningRule):
+    def __init__(self, error, learning_rate=1.0):
+        self.error = error
+        self.learning_rate = learning_rate
+
+    @property
+    def connection(self):
+        return self._connection
+
+    @connection.setter
+    def connection(self, connection):
+        if self._connection is not None:
+            raise ValueError("Connection is already set and cannot be "
+                             "changed.")
+        self.error_connection = Connection(
+            self.error, connection.post, modulatory=True)
+        self._connection = connection
+
+
+class OJA(LearningRule):
+    def __init__(self, pre_tau=0.005, post_tau=0.005, learning_rate=1e-5,
+                 scale=1.0, learning=None, label=None):
+        self.pre_tau = pre_tau
+        self.post_tau = post_tau
+        self.learning_rate = learning_rate
+        self.scale = scale
+        self.learning = learning
+
+        if label is None:
+            label = "<OJA %d>" % id(self)
+        self.label = label
+
+    @property
+    def connection(self):
+        return self._connection
+
+    @connection.setter
+    def connection(self, connection):
+        if not (isinstance(connection.pre, Neurons) and
+                isinstance(connection.post, Neurons)):
+            raise ValueError("OJA Connection must be between Neurons.")
+        if self._connection is not None:
+            raise ValueError("Connection is already set and cannot be "
+                             "changed.")
+        if self.learning:
+            dummy_post = nengo.Ensemble(nengo.LIF(1), 1)
+            self.learning_connection = Connection(
+                self.learning, dummy_post, modulatory=True)
+        self._connection = connection
