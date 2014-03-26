@@ -815,9 +815,9 @@ class OJA(LearningRule):
 
     @connection.setter
     def connection(self, connection):
-        if not (isinstance(connection.pre, Neurons) and
-                isinstance(connection.post, Neurons)):
-            raise ValueError("OJA Connection must be between Neurons.")
+        #if not (isinstance(connection.pre, Neurons) and
+        #        isinstance(connection.post, Neurons)):
+        #    raise ValueError("OJA Connection must be between Neurons.")
         if self._connection is not None:
             raise ValueError("Connection is already set and cannot be "
                              "changed.")

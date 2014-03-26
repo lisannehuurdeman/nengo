@@ -709,6 +709,38 @@ class SimOJA(Operator):
         return step
 
 
+class SimOJA2(Operator):
+    """Change the transform according to the OJA rule."""
+
+    def __init__(self, gain, post_filtered, encoders, x,
+                 learning_signal, learning_rate, scale):
+        self.gain = gain
+        self.post_filtered = post_filtered
+        self.encoders = encoders
+        self.x = x
+        self.learning_signal = learning_signal
+        self.learning_rate = learning_rate
+        self.scale = scale
+
+        self.reads = [post_filtered, x, learning_signal]
+        self.updates = [encoders]
+        self.sets = []
+        self.incs = []
+
+    def make_step(self, dct, dt):
+        post_filtered = dct[self.post_filtered]
+        encoders = dct[self.encoders]
+        x = dct[self.x]
+        learning_signal = dct[self.learning_signal]
+        learning_rate = self.learning_rate
+
+        def step():
+            post_squared = (post_filtered * post_filtered)[:, np.newaxis]
+            encoders[...] += learning_rate * learning_signal * (
+                self.gain * np.outer(post_filtered, x) - self.scale * post_squared * encoders)
+        return step
+
+
 def random_maxint(rng):
     """Returns rng.randint(x) where x is the maximum 32-bit integer."""
     return rng.randint(np.iinfo(np.int32).max)
@@ -726,9 +758,10 @@ class Model(object):
         self.sig_in = {}
         self.sig_out = {}
 
-        # HACK: These two are only needed to build learning rules
-        self.sig_decoder = {}
-        self.sig_transform = {}
+        # HACK: These three are only needed to build learning rules
+        self.sig_decoder = {}  # connection -> decoder signal
+        self.sig_transform = {}  # connection -> transform signal
+        self.sig_encoder = {}  # ensemble -> encoder signal
 
         self.dt = dt
         self.label = label
@@ -903,11 +936,14 @@ class Builder(object):
             scaled_encoders = encoders * (bn.gain / ens.radius)[:, np.newaxis]
 
         # Create output signal, using built Neurons
+        encoder_signal = Signal(scaled_encoders,
+                                name="%s.scaled_encoders" % ens.label)
         self.model.operators.append(DotInc(
-            Signal(scaled_encoders, name="%s.scaled_encoders" % ens.label),
+            encoder_signal,
             self.model.sig_in[ens],
             self.model.sig_in[ens.neurons],
             tag="%s encoding" % ens.label))
+        self.model.sig_encoder[ens] = encoder_signal
 
         # Output is neural output
         self.model.sig_out[ens] = self.model.sig_out[ens.neurons]
@@ -1200,6 +1236,26 @@ class Builder(object):
 
     @builds(nengo.OJA)
     def build_oja(self, oja):
+        post_activities = self.output.sig_out[oja.connection.post]
+        post_filtered = self.filtered_signal(post_activities, oja.post_tau)
+
+        if oja.learning:
+            learning_signal = self.output.sig_out[oja.learning_connection]
+        else:
+            learning_signal = Signal(1, name="ONE")
+
+        self.output.operators.append(
+            SimOJA2(gain=self.built[oja.connection.post.neurons].gain[:, np.newaxis],
+                    post_filtered=post_filtered,
+                    encoders=self.output.sig_encoder[oja.connection.post],
+                    x=self.output.sig_out[oja.connection],
+                    learning_signal=learning_signal,
+                    learning_rate=oja.learning_rate,
+                    scale=oja.scale))
+
+    '''
+    @builds(nengo.OJA)
+    def build_oja(self, oja):
         pre_activities = self.output.sig_out[oja.connection.pre]
         post_activities = self.output.sig_out[oja.connection.post]
 
@@ -1228,3 +1284,4 @@ class Builder(object):
                    learning_signal=learning_signal,
                    learning_rate=oja.learning_rate,
                    scale=oja.scale))
+    '''
