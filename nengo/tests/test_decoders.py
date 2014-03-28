@@ -268,6 +268,140 @@ def test_regularization(Simulator, nl_nodirect):
         plt.close()
 
 
+@pytest.mark.benchmark
+def test_eval_points_static(Simulator):
+    solver = lstsq_L2
+
+    rng = np.random.RandomState(0)
+    n = 100
+    d = 5
+
+    eval_points = np.logspace(np.log10(300), np.log10(5000), 21)
+    eval_points = np.round(eval_points).astype('int')
+    max_points = eval_points.max()
+    n_trials = 25
+    # n_trials = 100
+
+    rmses = np.nan * np.zeros((len(eval_points), n_trials))
+
+    for trial in range(n_trials):
+        # make a population for generating LIF tuning curves
+        a = nengo.LIF(n)
+        gain, bias = a.gain_bias(
+            # rng.uniform(50, 100, n), rng.uniform(-1, 1, n))
+            rng.uniform(50, 100, n), rng.uniform(-0.9, 0.9, n))
+
+        e = sample_hypersphere(d, n, rng=rng, surface=True).T
+
+        # make one activity matrix with the max number of eval points
+        train = sample_hypersphere(d, max_points, rng=rng)
+        test = sample_hypersphere(d, max_points, rng=rng)
+        Atrain = a.rates(np.dot(train, e), gain, bias)
+        Atest = a.rates(np.dot(test, e), gain, bias)
+
+        for i, n_points in enumerate(eval_points):
+            Di = solver(Atrain[:n_points], train[:n_points], rng=rng)
+            rmses[i, trial] = rms(np.dot(Atest, Di) - test)
+
+    rmses_norm1 = rmses - rmses.mean(0, keepdims=True)
+    rmses_norm2 = (rmses - rmses.mean(0, keepdims=True)
+                   ) / rmses.std(0, keepdims=True)
+
+    with Plotter(Simulator) as plt:
+        def make_plot(rmses):
+            mean = rmses.mean(1)
+            low = rmses.min(1)
+            high = rmses.max(1)
+            std = rmses.std(1)
+            plt.semilogx(eval_points, mean, 'k-')
+            plt.semilogx(eval_points, mean - std, 'k--')
+            plt.semilogx(eval_points, mean + std, 'k--')
+            plt.semilogx(eval_points, high, 'r-')
+            plt.semilogx(eval_points, low, 'b-')
+            plt.xlim([eval_points[0], eval_points[-1]])
+            # plt.xticks(eval_points, eval_points)
+
+        plt.figure(figsize=(12, 8))
+        plt.subplot(3, 1, 1)
+        make_plot(rmses)
+        plt.subplot(3, 1, 2)
+        make_plot(rmses_norm1)
+        plt.subplot(3, 1, 3)
+        make_plot(rmses_norm2)
+        plt.savefig('test_decoders.test_eval_points_static.pdf')
+        plt.close()
+
+
+@pytest.mark.benchmark
+def test_eval_points(Simulator, nl_nodirect):
+    import time
+
+    rng = np.random.RandomState(0)
+    n = 100
+    d = 5
+    # d = 2
+    filter = 0.08
+    dt = 1e-3
+
+    eval_points = np.logspace(np.log10(300), np.log10(5000), 11)
+    eval_points = np.round(eval_points).astype('int')
+    max_points = eval_points.max()
+    n_trials = 1
+
+    rmses = np.nan * np.zeros((len(eval_points), n_trials))
+    for j in range(n_trials):
+        points = rng.normal(size=(max_points, d))
+        points *= (rng.uniform(size=max_points)
+                   / norm(points, axis=-1))[:, None]
+
+        rng_j = np.random.RandomState(348 + j)
+        seed = 903824 + j
+
+        # generate random input in unit hypersphere
+        x = rng_j.normal(size=d)
+        x *= rng_j.uniform() / norm(x)
+
+        for i, n_points in enumerate(eval_points):
+            model = nengo.Model('test_eval_points(%d,%d)' % (i, j), seed=seed)
+            with model:
+                u = nengo.Node(output=x)
+                a = nengo.Ensemble(nl_nodirect(n * d), d,
+                                   eval_points=points[:n_points])
+                nengo.Connection(u, a, filter=0)
+                up = nengo.Probe(u)
+                ap = nengo.Probe(a)
+
+            timer = time.time()
+            sim = Simulator(model, dt=dt)
+            timer = time.time() - timer
+            sim.run(10 * filter)
+
+            t = sim.trange()
+            xt = filtfilt(sim.data(up), filter / dt)
+            yt = filtfilt(sim.data(ap), filter / dt)
+            t0 = 5 * filter
+            t1 = 7 * filter
+            tmask = (t > t0) & (t < t1)
+
+            rmses[i, j] = rms(yt[tmask] - xt[tmask])
+            # print "done %d (%d) in %0.3f s" % (n_points, j, timer)
+
+    # subtract out mean for each model
+    rmses_norm = rmses - rmses.mean(0, keepdims=True)
+
+    with Plotter(Simulator, nl_nodirect) as plt:
+        mean = rmses_norm.mean(1)
+        low = rmses_norm.min(1)
+        high = rmses_norm.max(1)
+        plt.semilogx(eval_points, mean, 'k-')
+        plt.semilogx(eval_points, high, 'r-')
+        plt.semilogx(eval_points, low, 'b-')
+        plt.xlim([eval_points[0], eval_points[-1]])
+        plt.xticks(eval_points, eval_points)
+        plt.savefig('test_decoders.test_eval_points.pdf')
+        plt.close()
+
+
 if __name__ == "__main__":
     nengo.log(debug=True)
     pytest.main([__file__, '-v'])
