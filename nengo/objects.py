@@ -1,5 +1,4 @@
 import collections
-import inspect
 import logging
 import os
 import pickle
@@ -9,14 +8,9 @@ import numpy as np
 import nengo.utils.numpy as npext
 from nengo.utils.compat import is_callable, with_metaclass
 from nengo.utils.distributions import Uniform
+from nengo.utils.inspect import in_stack
 
 logger = logging.getLogger(__name__)
-
-
-def _in_stack(function):
-    """Check whether the given function is in the call stack"""
-    codes = [record[0].f_code for record in inspect.stack()]
-    return function.__code__ in codes
 
 
 class NetworkMember(type):
@@ -467,7 +461,7 @@ class Connection(NengoObject):
         return new_transform
 
     def _check_shapes(self, check_in_init=False):
-        if not check_in_init and _in_stack(self.__init__):
+        if not check_in_init and in_stack(self.__init__):
             return  # skip automatic checks if we're in the init function
         self._check_transform(self.transform_full,
                               self._required_transform_shape())
