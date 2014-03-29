@@ -978,6 +978,12 @@ class Builder(object):
 
             x = np.dot(eval_points, encoders.T / conn.pre.radius)
             activities = dt * conn.pre.neurons.rates(x, gain, bias)
+            if np.count_nonzero(activities) == 0:
+                raise RuntimeError(
+                    "'activities' matrix is all zero. This is because "
+                    "no evaluation points fall in the firing ranges of "
+                    "any neurons.")
+
             if conn.function is None:
                 targets = eval_points
             else:
