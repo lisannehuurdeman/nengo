@@ -29,7 +29,6 @@ class NengoObjectContainer(type):
     This allows modelers to create Network subclasses that look like
     ordinary Python classes, while maintaining the nice property that
     all created objects are available in the appropriate lists.
-
     """
     def __call__(cls, *args, **kwargs):
         inst = cls.__new__(cls)
@@ -52,12 +51,7 @@ class NengoObjectContainer(type):
         inst.networks = inst.objects[Network]
         inst._next_key = hash(inst)
         with inst:
-            try:
-                inst.__init__(*args, **kwargs)
-            except TypeError:
-                raise TypeError("Error initializing %s.\nEnsure that "
-                                "labels are passed as label='My label'."
-                                % cls.__name__)
+            inst.__init__(*args, **kwargs)
         return inst
 
 
@@ -171,7 +165,9 @@ class Network(with_metaclass(NengoObjectContainer)):
         return hash((self._key, self.label))
 
     def __str__(self):
-        return "%s: %s" % (self.__class__.__name__, self.label)
+        return "%s: %s" % (
+            self.__class__.__name__,
+            self.label if self.label is not None else str(self._key))
 
     def __repr__(self):
         return str(self)
