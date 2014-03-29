@@ -192,9 +192,6 @@ class Ensemble(NengoObject):
         # Set up probes
         self.probes = {'decoded_output': [], 'spikes': [], 'voltages': []}
 
-    def add_to_network(self, network):
-        network.ensembles.append(self)
-
     def __getitem__(self, key):
         return ObjView(self, key)
 
@@ -323,9 +320,6 @@ class Node(NengoObject):
         # Set up probes
         self.probes = {'output': []}
 
-    def add_to_network(self, network):
-        network.nodes.append(self)
-
     def __getitem__(self, key):
         return ObjView(self, key)
 
@@ -417,9 +411,6 @@ class Connection(NengoObject):
         # check that shapes match up
         self.transform = transform
         self._check_shapes(check_in_init=True)
-
-    def add_to_network(self, network):
-        network.connections.append(self)
 
     def _check_pre_ensemble(self, prop_name):
         if not isinstance(self._pre, Ensemble):
@@ -636,10 +627,11 @@ class NengoObjectContainer(type):
 
         inst.label = kwargs.pop('label', None)
         inst.seed = kwargs.pop('seed', None)
-        inst.ensembles = []
-        inst.nodes = []
-        inst.connections = []
-        inst.networks = []
+        inst.objects = {Ensemble: [], Node: [], Connection: [], Network: []}
+        inst.ensembles = inst.objects[Ensemble]
+        inst.nodes = inst.objects[Node]
+        inst.connections = inst.objects[Connection]
+        inst.networks = inst.objects[Network]
         inst._next_key = hash(inst)
         with inst:
             try:
@@ -702,17 +694,14 @@ class Network(with_metaclass(NengoObjectContainer)):
                                "add_to_network=False in the object's "
                                "constructor." % obj)
         network = cls.context[-1]
-        try:
-            obj._key = network.generate_key()
-        except AttributeError:
-            raise RuntimeError("Current context is not a network: %s" %
-                               network)
-        try:
-            obj.add_to_network(network)
-        except AttributeError:
-            raise RuntimeError("%s must define an add_to_network function "
-                               "in order to be added to a network."
-                               % obj.__class__.__name__)
+        obj._key = network.generate_key()
+        for cls in obj.__class__.__mro__:
+            if cls in network.objects:
+                network.objects[cls].append(obj)
+                break
+        else:
+            raise RuntimeError("Object of type %s cannot be added to "
+                               "networks." % obj.__class__.__name__)
 
     def save(self, fname, fmt=None):
         """Save this model to a file.
@@ -741,9 +730,6 @@ class Network(with_metaclass(NengoObjectContainer)):
             return pickle.load(f)
 
         raise IOError("Could not load %s" % fname)
-
-    def add_to_network(self, network):
-        network.networks.append(self)
 
     def __hash__(self):
         return hash((self._key, self.label))
