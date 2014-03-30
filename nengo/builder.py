@@ -730,7 +730,7 @@ class SimOja(Operator):
         x = dct[self.x]
         learning_signal = dct[self.learning_signal]
         learning_rate = self.learning_rate
-        encoder_scale = self.gain[:, np.newaxis] / self.radius
+        encoder_scale = (self.gain / self.radius)[:, np.newaxis]
 
         def step():
             post_squared = (post_filtered * post_filtered)[:, np.newaxis]
