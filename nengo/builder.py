@@ -575,7 +575,7 @@ class SimPyFunc(Operator):
     """
 
     def __init__(self, output, fn, t_in, x):
-        self.output = output
+        self.model = output
         self.fn = fn
         self.t_in = t_in
         self.x = x
@@ -586,10 +586,10 @@ class SimPyFunc(Operator):
         self.incs = []
 
     def __str__(self):
-        return "SimPyFunc(%s -> %s '%s')" % (self.x, self.output, self.fn)
+        return "SimPyFunc(%s -> %s '%s')" % (self.x, self.model, self.fn)
 
     def make_step(self, dct, dt):
-        output = dct[self.output]
+        output = dct[self.model]
         fn = self.fn
         args = [dct['__time__']] if self.t_in else []
         args += [dct[self.x]] if self.x is not None else []
@@ -611,7 +611,7 @@ class SimLIF(Operator):
 
     def __init__(self, output, J, nl, voltage, refractory_time):
         self.nl = nl
-        self.output = output
+        self.model = output
         self.J = J
         self.voltage = voltage
         self.refractory_time = refractory_time
@@ -632,7 +632,7 @@ class SimLIF(Operator):
 
     def make_step(self, dct, dt):
         J = dct[self.J]
-        output = dct[self.output]
+        output = dct[self.model]
         v = dct[self.voltage]
         rt = dct[self.refractory_time]
 
@@ -645,7 +645,7 @@ class SimLIFRate(Operator):
     """Set output to spike rates of an LIF model."""
 
     def __init__(self, output, J, nl):
-        self.output = output
+        self.model = output
         self.J = J
         self.nl = nl
 
@@ -656,7 +656,7 @@ class SimLIFRate(Operator):
 
     def make_step(self, dct, dt):
         J = dct[self.J]
-        output = dct[self.output]
+        output = dct[self.model]
 
         def step():
             self.nl.step_math(dt, J, output)
@@ -873,9 +873,9 @@ class Builder(object):
 
         # 4. Then learning rules
         logger.info("Building learning rules")
-        for c in network.connections:
-            if c.learning_rule is not None:
-                self.build(c.learning_rule)
+        for conn in network.connections:
+            if conn.learning_rule is not None:
+                self.build(conn.learning_rule, conn)
 
     @builds(nengo.objects.Ensemble)  # noqa
     def build_ensemble(self, ens):
@@ -1122,7 +1122,7 @@ class Builder(object):
             self.model.sig_out[conn] = Signal(
                 np.zeros(self.model.sig_out[conn].size),
                 name="%s.mod_output" % conn.label)
-            self.output.operators.append(Reset(self.output.sig_out[conn]))
+            self.model.operators.append(Reset(self.model.sig_out[conn]))
             # TODO: add unit test
 
         # Add operator for transform
@@ -1214,41 +1214,41 @@ class Builder(object):
         return rval
 
     @builds(nengo.PES)
-    def build_pes(self, pes):
-        activities = self.output.sig_out[pes.connection.pre]
-        error = self.output.sig_out[pes.error_connection]
+    def build_pes(self, pes, conn):
+        activities = self.model.sig_out[conn.pre]
+        error = self.model.sig_out[pes.error_connection]
         scaled_error = Signal(np.zeros(error.shape), name="PES:scaled_error")
         shaped_scaled_error = SignalView(scaled_error, (error.size, 1), (1, 1),
                                          0, name="PES:shaped_scaled_erro")
         shaped_activities = SignalView(activities, (1, activities.size),
                                        (1, 1), 0, name="PES:shaped_activites")
 
-        decoders = self.output.sig_decoder[pes.connection]
+        decoders = self.model.sig_decoder[conn]
         lr_signal = Signal(pes.learning_rate, name="PES:learning_rate")
 
-        self.output.operators.append(Reset(scaled_error))
-        self.output.operators.append(
+        self.model.operators.append(Reset(scaled_error))
+        self.model.operators.append(
             DotInc(lr_signal, error, scaled_error, tag="PES:scale error"))
-        self.output.operators.append(
+        self.model.operators.append(
             ProdUpdate(shaped_scaled_error, shaped_activities,
                        Signal(1, name="ONE"), decoders,
                        tag="PES:Update Decoder"))
 
     @builds(nengo.OJA)
-    def build_oja(self, oja):
-        post_activities = self.output.sig_out[oja.connection.post]
+    def build_oja(self, oja, conn):
+        post_activities = self.model.sig_out[conn.post]
         post_filtered = self.filtered_signal(post_activities, oja.post_tau)
 
         if oja.learning:
-            learning_signal = self.output.sig_out[oja.learning_connection]
+            learning_signal = self.model.sig_out[oja.learning_connection]
         else:
             learning_signal = Signal(1, name="ONE")
 
-        self.output.operators.append(
-            SimOJA2(gain=self.built[oja.connection.post.neurons].gain[:, np.newaxis],
+        self.model.operators.append(
+            SimOJA2(gain=self.built[conn.post.neurons].gain[:, np.newaxis],
                     post_filtered=post_filtered,
-                    encoders=self.output.sig_encoder[oja.connection.post],
-                    x=self.output.sig_out[oja.connection],
+                    encoders=self.model.sig_encoder[conn.post],
+                    x=self.model.sig_out[conn],
                     learning_signal=learning_signal,
                     learning_rate=oja.learning_rate,
                     scale=oja.scale))
@@ -1256,27 +1256,27 @@ class Builder(object):
     '''
     @builds(nengo.OJA)
     def build_oja(self, oja):
-        pre_activities = self.output.sig_out[oja.connection.pre]
-        post_activities = self.output.sig_out[oja.connection.post]
+        pre_activities = self.model.sig_out[conn.pre]
+        post_activities = self.model.sig_out[conn.post]
 
         pre_filtered = self.filtered_signal(pre_activities, oja.pre_tau)
         post_filtered = self.filtered_signal(post_activities, oja.post_tau)
 
-        delta = Signal(np.zeros((oja.connection.post.n_neurons,
-                                 oja.connection.pre.n_neurons)), name="delta")
+        delta = Signal(np.zeros((conn.post.n_neurons,
+                                 conn.pre.n_neurons)), name="delta")
 
-        normalization = Signal(np.zeros((oja.connection.post.n_neurons,
-                                         oja.connection.pre.n_neurons)),
+        normalization = Signal(np.zeros((conn.post.n_neurons,
+                                         conn.pre.n_neurons)),
                                name="normalization")
 
         if oja.learning:
-            learning_signal = self.output.sig_out[oja.learning_connection]
+            learning_signal = self.model.sig_out[oja.learning_connection]
         else:
             learning_signal = Signal(1, name="ONE")
 
-        self.output.operators.append(
-            SimOJA(transform=self.output.sig_transform[oja.connection],
-                   gain=self.built[oja.connection.post].gain[:, np.newaxis],
+        self.model.operators.append(
+            SimOJA(transform=self.model.sig_transform[conn],
+                   gain=self.built[conn.post].gain[:, np.newaxis],
                    delta=delta,
                    pre_filtered=pre_filtered,
                    post_filtered=post_filtered,
