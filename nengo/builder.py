@@ -680,10 +680,8 @@ class Model(object):
         self.sig_in = {}
         self.sig_out = {}
 
-        # HACK: These three are only needed to build learning rules
+        # Signals needed to build learning rules
         self.sig_decoder = {}  # connection -> decoder signal
-        self.sig_transform = {}  # connection -> transform signal
-        self.sig_encoder = {}  # ensemble -> encoder signal
 
         self.dt = dt
         self.label = label
@@ -865,7 +863,6 @@ class Builder(object):
             self.model.sig_in[ens],
             self.model.sig_in[ens.neurons],
             tag="%s encoding" % ens.label))
-        self.model.sig_encoder[ens] = encoder_signal
 
         # Output is neural output
         self.model.sig_out[ens] = self.model.sig_out[ens.neurons]
@@ -1064,7 +1061,6 @@ class Builder(object):
             signal,
             self.model.sig_out[conn],
             tag=conn.label))
-        self.model.sig_transform[conn] = transform_signal
 
         # Set up probes
         for probe in conn.probes["signal"]:
