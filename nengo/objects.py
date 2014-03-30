@@ -368,6 +368,9 @@ class Connection(NengoObject):
         Function to compute using the pre population (pre must be Ensemble).
     learning_rule : LearningRule
         Method of modifying the connection weights during simulation.
+    modulatory : bool
+        Specifies whether the connection is modulatory (does not physically
+        connect to post, for use by learning rules), or not (default).
     probes : dict
         description TODO
     transform : array_like, shape (post_size, pre_size)
@@ -625,28 +628,11 @@ class PES(LearningRule):
 
         # TODO: With modulatory connections, the 'post' doesn't matter as long
         # as it has compatible dimensions with the pre, because the builder
-        # detaches the connection from the post anyways.
+        # detaches the connection from the post.
         self.error_connection = Connection(
             self.error, self.error, modulatory=True)
 
         super(PES, self).__init__(label)
-
-
-class OJA(LearningRule):
-
-    def __init__(self, pre_tau=0.005, post_tau=0.005, learning_rate=1e-5,
-                 scale=1.0, learning=None, label=None):
-        self.pre_tau = pre_tau
-        self.post_tau = post_tau
-        self.learning_rate = learning_rate
-        self.scale = scale
-        self.learning = learning
-
-        if self.learning:
-            self.learning_connection = Connection(
-                self.learning, self.learning, modulatory=True)
-
-        super(OJA, self).__init__(label)
 
 
 class Probe(object):

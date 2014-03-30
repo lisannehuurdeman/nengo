@@ -663,84 +663,6 @@ class SimLIFRate(Operator):
         return step
 
 
-class SimOJA(Operator):
-    """Change the transform according to the OJA rule."""
-
-    def __init__(self, transform, gain, delta, pre_filtered, post_filtered,
-                 normalization, learning_signal, learning_rate, scale):
-        self.transform = transform
-        self.gain = gain
-        self.delta = delta
-        self.post_filtered = post_filtered
-        self.pre_filtered = pre_filtered
-        self.normalization = normalization
-        self.learning_signal = learning_signal
-        self.learning_rate = learning_rate
-        self.scale = scale
-
-        self.reads = [pre_filtered, post_filtered, learning_signal]
-        self.updates = [transform, delta, normalization]
-        self.sets = []
-        self.incs = []
-
-    def init_sigdict(self, sigdict, dt):
-        Operator.init_sigdict(self, sigdict, dt)
-        sigdict[self.delta] = np.zeros(
-            self.delta.shape, dtype=self.delta.dtype)
-        sigdict[self.normalization] = np.zeros(
-            self.normalization.shape, dtype=self.normalization.dtype)
-
-    def make_step(self, dct, dt):
-        transform = dct[self.transform]
-        delta = dct[self.delta]
-        pre_filtered = dct[self.pre_filtered]
-        post_filtered = dct[self.post_filtered]
-        normalization = dct[self.normalization]
-        learning_signal = dct[self.learning_signal]
-        learning_rate = self.learning_rate
-
-        def step():
-            post_squared = post_filtered * post_filtered
-            for i in range(len(post_squared)):
-                normalization[i, :] = transform[i, :] * post_squared[i]
-            delta[...] = np.outer(post_filtered, pre_filtered)
-            transform[...] += learning_rate * learning_signal * (
-                self.gain * delta - self.scale * normalization)
-        return step
-
-
-class SimOJA2(Operator):
-    """Change the transform according to the OJA rule."""
-
-    def __init__(self, gain, post_filtered, encoders, x,
-                 learning_signal, learning_rate, scale):
-        self.gain = gain
-        self.post_filtered = post_filtered
-        self.encoders = encoders
-        self.x = x
-        self.learning_signal = learning_signal
-        self.learning_rate = learning_rate
-        self.scale = scale
-
-        self.reads = [post_filtered, x, learning_signal]
-        self.updates = [encoders]
-        self.sets = []
-        self.incs = []
-
-    def make_step(self, dct, dt):
-        post_filtered = dct[self.post_filtered]
-        encoders = dct[self.encoders]
-        x = dct[self.x]
-        learning_signal = dct[self.learning_signal]
-        learning_rate = self.learning_rate
-
-        def step():
-            post_squared = (post_filtered * post_filtered)[:, np.newaxis]
-            encoders[...] += learning_rate * learning_signal * (
-                self.gain * np.outer(post_filtered, x) - self.scale * post_squared * encoders)
-        return step
-
-
 def random_maxint(rng):
     """Returns rng.randint(x) where x is the maximum 32-bit integer."""
     return rng.randint(np.iinfo(np.int32).max)
@@ -1213,7 +1135,7 @@ class Builder(object):
                                            refractory_time=refractory_time))
         return rval
 
-    @builds(nengo.PES)
+    @builds(nengo.objects.PES)
     def build_pes(self, pes, conn):
         activities = self.model.sig_out[conn.pre]
         error = self.model.sig_out[pes.error_connection]
@@ -1233,55 +1155,3 @@ class Builder(object):
             ProdUpdate(shaped_scaled_error, shaped_activities,
                        Signal(1, name="ONE"), decoders,
                        tag="PES:Update Decoder"))
-
-    @builds(nengo.OJA)
-    def build_oja(self, oja, conn):
-        post_activities = self.model.sig_out[conn.post]
-        post_filtered = self.filtered_signal(post_activities, oja.post_tau)
-
-        if oja.learning:
-            learning_signal = self.model.sig_out[oja.learning_connection]
-        else:
-            learning_signal = Signal(1, name="ONE")
-
-        self.model.operators.append(
-            SimOJA2(gain=self.built[conn.post.neurons].gain[:, np.newaxis],
-                    post_filtered=post_filtered,
-                    encoders=self.model.sig_encoder[conn.post],
-                    x=self.model.sig_out[conn],
-                    learning_signal=learning_signal,
-                    learning_rate=oja.learning_rate,
-                    scale=oja.scale))
-
-    '''
-    @builds(nengo.OJA)
-    def build_oja(self, oja):
-        pre_activities = self.model.sig_out[conn.pre]
-        post_activities = self.model.sig_out[conn.post]
-
-        pre_filtered = self.filtered_signal(pre_activities, oja.pre_tau)
-        post_filtered = self.filtered_signal(post_activities, oja.post_tau)
-
-        delta = Signal(np.zeros((conn.post.n_neurons,
-                                 conn.pre.n_neurons)), name="delta")
-
-        normalization = Signal(np.zeros((conn.post.n_neurons,
-                                         conn.pre.n_neurons)),
-                               name="normalization")
-
-        if oja.learning:
-            learning_signal = self.model.sig_out[oja.learning_connection]
-        else:
-            learning_signal = Signal(1, name="ONE")
-
-        self.model.operators.append(
-            SimOJA(transform=self.model.sig_transform[conn],
-                   gain=self.built[conn.post].gain[:, np.newaxis],
-                   delta=delta,
-                   pre_filtered=pre_filtered,
-                   post_filtered=post_filtered,
-                   normalization=normalization,
-                   learning_signal=learning_signal,
-                   learning_rate=oja.learning_rate,
-                   scale=oja.scale))
-    '''
