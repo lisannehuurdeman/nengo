@@ -672,7 +672,7 @@ class Oja(LearningRule):
         or None if learning was None.
     """
 
-    def __init__(self, filter=0.005, learning_rate=1e-5, scale=1.0,
+    def __init__(self, filter=0.005, learning_rate=1e-5, scale=4.0,
                  learning=None, label=None):
         self.filter = filter
         self.learning_rate = learning_rate
