@@ -663,6 +663,83 @@ class SimLIFRate(Operator):
         return step
 
 
+class SimOja(Operator):
+    """Simulates Oja's rule in the vector space.
+
+    Moves the active encoders towards the decoded value. This is a
+    straight-forward analog of Oja's rule in the vector space, making it more
+    computationally efficient than manipulating the full connection matrix.
+
+    Let:
+        y be the post-synpatic activity
+        a be the pre-synaptic activity
+        s be the normalization factor, scale
+        W be the connection weight matrix
+        x be the decoded pre-synaptic activity
+        e be the encoders
+
+    Then Oja's rule is normally:
+        W += outer(y, a) - s y^2 W
+
+    Substituting W -> e, a -> x, gives a rule in the vector space:
+        e += outer(y, x) - s y^2 e
+
+    And it can be shown that this gives approximately the same changes to the
+    implied weight matrix (after adjusting the learning rate and s).
+    Details are outside the scope of these comments.
+
+    Parameters
+    ----------
+    post_filtered : Signal
+        Filtered post-synaptic activity signal (y).
+    scaled_encoders : Signal
+        2d array of encoders, scaled by gain / radius. Updated by rule.
+    gain : np.ndarray
+        1d array of gains for each post-synaptic neuron.
+    radius : float
+        Radius of post-synaptic ensemble.
+    x : Signal
+        Decoded activity from pre-synaptic ensemble, np.dot(d, a).
+    learning_signal : Signal
+        Scalar signal to be multiplied by the learning_rate. Expected to range
+        between 0 and 1 to turn learning off or on, respectively.
+    scale : float
+        Normalization factor for oja's rule. Larger values make the encoder
+        change to be closer to the current x.
+    """
+
+    def __init__(self, post_filtered, scaled_encoders, gain, radius, x,
+                 learning_signal, learning_rate, scale):
+        self.post_filtered = post_filtered
+        self.scaled_encoders = scaled_encoders
+        self.gain = gain
+        self.radius = radius
+        self.x = x
+        self.learning_signal = learning_signal
+        self.learning_rate = learning_rate
+        self.scale = scale
+
+        self.reads = [post_filtered, x, learning_signal]
+        self.updates = [scaled_encoders]
+        self.sets = []
+        self.incs = []
+
+    def make_step(self, dct, dt):
+        post_filtered = dct[self.post_filtered]
+        scaled_encoders = dct[self.scaled_encoders]
+        x = dct[self.x]
+        learning_signal = dct[self.learning_signal]
+        learning_rate = self.learning_rate
+        encoder_scale = self.gain[:, np.newaxis] / self.radius
+
+        def step():
+            post_squared = (post_filtered * post_filtered)[:, np.newaxis]
+            scaled_encoders[...] += learning_rate * learning_signal * (
+                encoder_scale * np.outer(post_filtered, x) -
+                self.scale * post_squared * scaled_encoders)
+        return step
+
+
 def random_maxint(rng):
     """Returns rng.randint(x) where x is the maximum 32-bit integer."""
     return rng.randint(np.iinfo(np.int32).max)
@@ -681,7 +758,8 @@ class Model(object):
         self.sig_out = {}
 
         # Signals needed to build learning rules
-        self.sig_decoder = {}  # connection -> decoder signal
+        self.sig_decoders = {}  # connection -> decoders signal
+        self.sig_scaled_encoders = {}  # ensemble -> scaled encoders signal
 
         self.dt = dt
         self.label = label
@@ -856,13 +934,14 @@ class Builder(object):
             scaled_encoders = encoders * (bn.gain / ens.radius)[:, np.newaxis]
 
         # Create output signal, using built Neurons
-        encoder_signal = Signal(scaled_encoders,
-                                name="%s.scaled_encoders" % ens.label)
+        scaled_encoders_signal = Signal(scaled_encoders,
+                                        name="%s.scaled_encoders" % ens.label)
         self.model.operators.append(DotInc(
-            encoder_signal,
+            scaled_encoders_signal,
             self.model.sig_in[ens],
             self.model.sig_in[ens.neurons],
             tag="%s encoding" % ens.label))
+        self.model.sig_scaled_encoders[ens] = scaled_encoders_signal
 
         # Output is neural output
         self.model.sig_out[ens] = self.model.sig_out[ens.neurons]
@@ -1027,7 +1106,7 @@ class Builder(object):
                 Signal(o_coef, name="o_coef"),
                 signal,
                 tag="%s decoding" % conn.label))
-            self.model.sig_decoder[conn] = decoder_signal
+            self.model.sig_decoders[conn] = decoder_signal
         else:
             # Direct connection
             signal = self.model.sig_in[conn]
@@ -1141,7 +1220,7 @@ class Builder(object):
         shaped_activities = SignalView(activities, (1, activities.size),
                                        (1, 1), 0, name="PES:shaped_activites")
 
-        decoders = self.model.sig_decoder[conn]
+        decoders = self.model.sig_decoders[conn]
         lr_signal = Signal(pes.learning_rate, name="PES:learning_rate")
 
         self.model.operators.append(Reset(scaled_error))
@@ -1151,3 +1230,23 @@ class Builder(object):
             ProdUpdate(shaped_scaled_error, shaped_activities,
                        Signal(1, name="ONE"), decoders,
                        tag="PES:Update Decoder"))
+
+    @builds(nengo.Oja)
+    def build_oja(self, oja, conn):
+        post_activities = self.model.sig_out[conn.post]
+        post_filtered = self.filtered_signal(post_activities, oja.filter)
+
+        if oja.learning_connection:
+            learning_signal = self.model.sig_out[oja.learning_connection]
+        else:
+            learning_signal = Signal(1, name="Oja:one")
+
+        self.model.operators.append(
+            SimOja(post_filtered=post_filtered,
+                   scaled_encoders=self.model.sig_scaled_encoders[conn.post],
+                   gain=self.built[conn.post.neurons].gain,
+                   radius=conn.post.radius,
+                   x=self.model.sig_out[conn],
+                   learning_signal=learning_signal,
+                   learning_rate=oja.learning_rate,
+                   scale=oja.scale))

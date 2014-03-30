@@ -635,6 +635,55 @@ class PES(LearningRule):
         super(PES, self).__init__(label)
 
 
+class Oja(LearningRule):
+    """Oja's Learning Rule.
+
+    Moves the active neuron's encoders towards the current x.
+
+    Parameters
+    ----------
+    filter : float, optional
+        Filter to apply to the post-synaptic activity. Defaults to 0.005.
+    learning_rate : float, optional
+        A scalar indicating the rate at which encoders will be adjusted.
+        Defaults to 1e-5.
+    scale : float, optional
+        Normalization factor for oja's rule. Larger values make the encoder
+        change to be closer to the current x. Defaults to 1.0.
+    learning : NengoObject, optional
+        Node, Ensemble, or Neurons, providing a scalar to multiply with the
+        learning rate. Defaults to None, in which case the scalar is 1.0.
+    label : string, optional
+        A name for the learning rule.
+
+    Attributes
+    ----------
+    label : string
+        Given label, or None.
+    filter : float
+        The given filter.
+    learning_rate : float
+        The given learning rate.
+    scale : float
+        The given normalization factor.
+    learning_connection : Connection
+        The modulatory connection created to project the learning scalar,
+        or None if learning was None.
+    """
+
+    def __init__(self, filter=0.005, learning_rate=1e-5, scale=1.0,
+                 learning=None, label=None):
+        self.filter = filter
+        self.learning_rate = learning_rate
+        self.scale = scale
+
+        # TODO: raise ValueError if learning is not a scalar
+        self.learning_connection = Connection(
+            learning, learning, modulatory=True) if learning else None
+
+        super(Oja, self).__init__(label)
+
+
 class Probe(object):
     """A probe is a dummy object that only has an input signal and probe.
 
