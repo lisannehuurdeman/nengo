@@ -663,7 +663,7 @@ class SimLIFRate(Operator):
         return step
 
 
-class SimOja(Operator):
+class SimVoja(Operator):
     """Simulates Oja's rule in the vector space.
 
     Moves the active encoders towards the decoded value. This is a
@@ -688,6 +688,13 @@ class SimOja(Operator):
     implied weight matrix (after adjusting the learning rate and s).
     Details are outside the scope of these comments.
 
+    Lastly, if we let s be approximately the average activity 1/y, then this
+    simplifies to approximately:
+        e += outer(y, x - e)
+
+    Which has the nice property that it stabilizes when x = e, so the encoder
+    length is normalized to the length of x.
+
     Parameters
     ----------
     post_filtered : Signal
@@ -703,13 +710,10 @@ class SimOja(Operator):
     learning_signal : Signal
         Scalar signal to be multiplied by the learning_rate. Expected to range
         between 0 and 1 to turn learning off or on, respectively.
-    scale : float
-        Normalization factor for oja's rule. Larger values make the encoder
-        change to be closer to the current x.
     """
 
     def __init__(self, post_filtered, scaled_encoders, gain, radius, x,
-                 learning_signal, learning_rate, scale):
+                 learning_signal, learning_rate):
         self.post_filtered = post_filtered
         self.scaled_encoders = scaled_encoders
         self.gain = gain
@@ -717,7 +721,6 @@ class SimOja(Operator):
         self.x = x
         self.learning_signal = learning_signal
         self.learning_rate = learning_rate
-        self.scale = scale
 
         self.reads = [post_filtered, x, learning_signal]
         self.updates = [scaled_encoders]
@@ -733,10 +736,9 @@ class SimOja(Operator):
         encoder_scale = (self.gain / self.radius)[:, np.newaxis]
 
         def step():
-            post_squared = (post_filtered * post_filtered)[:, np.newaxis]
             scaled_encoders[...] += learning_rate * learning_signal * (
                 encoder_scale * np.outer(post_filtered, x) -
-                self.scale * post_squared * scaled_encoders)
+                post_filtered[:, np.newaxis] * scaled_encoders)
         return step
 
 
@@ -1231,8 +1233,8 @@ class Builder(object):
                        Signal(1, name="ONE"), decoders,
                        tag="PES:Update Decoder"))
 
-    @builds(nengo.Oja)
-    def build_oja(self, oja, conn):
+    @builds(nengo.Voja)
+    def build_voja(self, oja, conn):
         post_activities = self.model.sig_out[conn.post]
         post_filtered = self.filtered_signal(post_activities, oja.filter)
 
@@ -1242,11 +1244,10 @@ class Builder(object):
             learning_signal = Signal(1, name="Oja:one")
 
         self.model.operators.append(
-            SimOja(post_filtered=post_filtered,
-                   scaled_encoders=self.model.sig_scaled_encoders[conn.post],
-                   gain=self.built[conn.post.neurons].gain,
-                   radius=conn.post.radius,
-                   x=self.model.sig_out[conn],
-                   learning_signal=learning_signal,
-                   learning_rate=oja.learning_rate,
-                   scale=oja.scale))
+            SimVoja(post_filtered=post_filtered,
+                    scaled_encoders=self.model.sig_scaled_encoders[conn.post],
+                    gain=self.built[conn.post.neurons].gain,
+                    radius=conn.post.radius,
+                    x=self.model.sig_out[conn],
+                    learning_signal=learning_signal,
+                    learning_rate=oja.learning_rate))
