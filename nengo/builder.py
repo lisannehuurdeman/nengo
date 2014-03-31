@@ -575,7 +575,7 @@ class SimPyFunc(Operator):
     """
 
     def __init__(self, output, fn, t_in, x):
-        self.model = output
+        self.output = output
         self.fn = fn
         self.t_in = t_in
         self.x = x
@@ -586,10 +586,10 @@ class SimPyFunc(Operator):
         self.incs = []
 
     def __str__(self):
-        return "SimPyFunc(%s -> %s '%s')" % (self.x, self.model, self.fn)
+        return "SimPyFunc(%s -> %s '%s')" % (self.x, self.output, self.fn)
 
     def make_step(self, dct, dt):
-        output = dct[self.model]
+        output = dct[self.output]
         fn = self.fn
         args = [dct['__time__']] if self.t_in else []
         args += [dct[self.x]] if self.x is not None else []
@@ -611,7 +611,7 @@ class SimLIF(Operator):
 
     def __init__(self, output, J, nl, voltage, refractory_time):
         self.nl = nl
-        self.model = output
+        self.output = output
         self.J = J
         self.voltage = voltage
         self.refractory_time = refractory_time
@@ -632,7 +632,7 @@ class SimLIF(Operator):
 
     def make_step(self, dct, dt):
         J = dct[self.J]
-        output = dct[self.model]
+        output = dct[self.output]
         v = dct[self.voltage]
         rt = dct[self.refractory_time]
 
@@ -645,7 +645,7 @@ class SimLIFRate(Operator):
     """Set output to spike rates of an LIF model."""
 
     def __init__(self, output, J, nl):
-        self.model = output
+        self.output = output
         self.J = J
         self.nl = nl
 
@@ -656,7 +656,7 @@ class SimLIFRate(Operator):
 
     def make_step(self, dct, dt):
         J = dct[self.J]
-        output = dct[self.model]
+        output = dct[self.output]
 
         def step():
             self.nl.step_math(dt, J, output)
@@ -719,6 +719,7 @@ class Builder(object):
       1. Ensembles, Nodes, Neurons, Probes
       2. Subnetworks (recursively)
       3. Connections
+      4. Learning Rules
     """
 
     # A decorator that registers the given Nengo object class with the function
@@ -1042,7 +1043,6 @@ class Builder(object):
                 np.zeros(self.model.sig_out[conn].size),
                 name="%s.mod_output" % conn.label)
             self.model.operators.append(Reset(self.model.sig_out[conn]))
-            # TODO: add unit test
 
         # Add operator for transform
         if isinstance(conn.post, nengo.objects.Neurons):
@@ -1137,7 +1137,7 @@ class Builder(object):
         error = self.model.sig_out[pes.error_connection]
         scaled_error = Signal(np.zeros(error.shape), name="PES:scaled_error")
         shaped_scaled_error = SignalView(scaled_error, (error.size, 1), (1, 1),
-                                         0, name="PES:shaped_scaled_erro")
+                                         0, name="PES:shaped_scaled_error")
         shaped_activities = SignalView(activities, (1, activities.size),
                                        (1, 1), 0, name="PES:shaped_activites")
 

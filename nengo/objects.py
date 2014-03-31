@@ -607,13 +607,14 @@ class PES(LearningRule):
         learning rule.
     learning_rate : float, optional
         A scalar indicating the rate at which decoders will be adjusted.
+        Defaults to 1e-5.
     label : string, optional
-        A name for the learning rule.
+        A name for the learning rule. Defaults to None.
 
     Attributes
     ----------
     label : string
-        Given label, or None.
+        The given label.
     error : NengoObject
         The given error Node, Ensemble, or Neurons.
     learning_rate : float
