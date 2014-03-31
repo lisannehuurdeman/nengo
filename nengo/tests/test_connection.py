@@ -272,6 +272,7 @@ def test_voja_learning_rule(Simulator, nl_nodirect):
     num_change = 100  # Number of encoders to modify
 
     m = nengo.Network(seed=3902)
+    np.random.seed(123)  # for encoder generation
     with m:
         u = nengo.Node(output=learned_vector)
         # Set the first num_change neurons to always fire (-1 intercept) with

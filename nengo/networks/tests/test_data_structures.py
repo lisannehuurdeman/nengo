@@ -73,12 +73,12 @@ def test_dict(Simulator, nl_nodirect):
 
     # Iterates through all of the (key, value) pairs twice. The second time,
     # learning is turned off.
-    model, output_p, dopamine_p = make_dict()
+    model, output_p, dopamine_p = make_dict(seed=123)
     sim = nengo.Simulator(model)
     sim.run(2 * learn_time)
 
     # Run it again but without Voja's rule.
-    stupid_model, stupid_output_p, _ = make_dict(voja_disable=True)
+    stupid_model, stupid_output_p, _ = make_dict(seed=123, voja_disable=True)
     stupid_sim = nengo.Simulator(stupid_model)
     stupid_sim.run(2 * learn_time)
 
