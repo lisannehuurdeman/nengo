@@ -18,8 +18,8 @@ class Dict(nengo.Network):
 
     Parameters
     ----------
-    n_memory : int
-        Number of neurons to use in the memory layer.
+    neurons : Neurons
+        Neurons to use for the memory layer.
     n_per_item : int
         Specifies how many neurons you would like to fire for a given key.
         This is an approximate target used to optimize the initial tuning
@@ -33,7 +33,7 @@ class Dict(nengo.Network):
     n_error : int, optional
         Number of neurons to use in the error ensemble. Defaults to 200.
     voja_learning_rate : float, optional
-        Learning rate for Voja's rule. Defaults to 1e-3.
+        Learning rate for Voja's rule. Defaults to 1e-2.
     voja_filter : float, optional
         Post-synaptic filter on the memory layer's activity as input to
         Voja's rule. Defaults to 0.001. Determines how quickly the network
@@ -84,6 +84,9 @@ class Dict(nengo.Network):
         (for PES). Set this signal to 0 when you want learning to be turned
         off (so that lookups can be done regardless of the current value),
         and to 1 when you want learning to be on (to store associations).
+        Note, accuracy may be slightly better if you can shut off
+        learning a couple ms before lookup begins (not simultaneously),
+        especially if the pes_learning_rate is high.
     memory : Ensemble
         Layer which stores all of the associations. Its encoders remember the
         given keys, and its decoders produce the corresponding values.
@@ -104,12 +107,15 @@ class Dict(nengo.Network):
         Instance of the PES learning rule.
     """
 
-    def make(self, n_memory, n_per_item, d_key, d_value, n_error=200,
-             voja_learning_rate=1e-3, voja_filter=0.001,
+    def make(self, neurons, n_per_item, d_key, d_value, n_error=200,
+             voja_learning_rate=1e-2, voja_filter=0.001,
              pes_learning_rate=1e-4, intercept_spread=0.05,
              n_dopamine=50, dopamine_strength=20, dopamine_filter=0.001,
              dopamine_intercepts=Uniform(0.1, 1), always_learn=False,
              voja_disable=False):
+        if n_per_item < 1:
+            raise ValueError("n_per_item (%d) must be positive" % n_per_item)
+
         # Create input and output relays
         self.key = nengo.Node(size_in=d_key, label="key")
         self.value = nengo.Node(size_in=d_value, label="value")
@@ -131,19 +137,18 @@ class Dict(nengo.Network):
         # shift towards the keys with Voja's rule, and the decoders will
         # shift towards the values with the PES learning rule.
         memory_intercept = self._calculate_intercept(
-            d_key, n_per_item / float(n_memory))
+            d_key, n_per_item / float(neurons.n_neurons))
         memory_intercepts = Uniform(
             memory_intercept - intercept_spread,
             min(memory_intercept + intercept_spread, 1.0))
         self.memory = nengo.Ensemble(
-            nengo.LIF(n_memory), d_key, intercepts=memory_intercepts,
-            label="memory")
+            neurons, d_key, intercepts=memory_intercepts, label="memory")
 
         # Create the ensemble for calculating error * learning
         self.error = nengo.Ensemble(nengo.LIF(n_error), d_value, label="error")
 
         # Connect the learning signal to the error population
-        nengo.Connection(self.learning, self.dopamine)
+        nengo.Connection(self.learning, self.dopamine, filter=dopamine_filter)
         nengo.Connection(self.bias, self.nopamine)
         self._inhibit(self.dopamine, self.nopamine, amount=dopamine_strength,
                       filter=dopamine_filter)
@@ -194,7 +199,7 @@ class Dict(nengo.Network):
         return x[py >= 1 - p][0]
 
     @classmethod
-    def _inhibit(cls, pre, post, amount=10, **kwargs):
+    def _inhibit(cls, pre, post, amount, **kwargs):
         """Creates a connection which inhibits post whenever pre fires."""
         return nengo.Connection(
             pre.neurons, post.neurons,
