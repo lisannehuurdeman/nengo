@@ -255,7 +255,7 @@ def test_pes_learning_rule(Simulator, nl_nodirect):
         sim.data[e_p][-1], np.zeros(len(learned_vector)), atol=0.05)
 
 
-def test_oja_learning_rule(Simulator, nl_nodirect):
+def test_voja_learning_rule(Simulator, nl_nodirect):
     n = 200
 
     def normalize(x):
@@ -284,7 +284,7 @@ def test_oja_learning_rule(Simulator, nl_nodirect):
         a = nengo.Ensemble(
             nl_nodirect(n), dimensions=d,
             encoders=encoders, intercepts=intercepts)
-        nengo.Connection(u, a, learning_rule=nengo.Oja(learning_rate=1e-2))
+        nengo.Connection(u, a, learning_rule=nengo.Voja(learning_rate=1e-2))
 
     sim = Simulator(m)
     sim.run(2.)
@@ -292,10 +292,8 @@ def test_oja_learning_rule(Simulator, nl_nodirect):
     # Check that the first num_change neurons have had their encoders shift
     # to learned_vector, and that the rest stayed the same.
     encoders_after = sim_encoders(sim, a)
-    # Must normalize the encoders since Oja's rule changes their lengths.
-    # TODO: unit testing to make sure the lengths aren't wildly altered.
-    assert np.allclose([normalize(e) for e in encoders_after[:num_change]],
-                       [learned_vector] * num_change, atol=0.1)
+    assert np.allclose(encoders_after[:num_change],
+                       [learned_vector] * num_change, atol=0.2)
     assert np.allclose(encoders_after[num_change:], encoders[num_change:])
 
 
