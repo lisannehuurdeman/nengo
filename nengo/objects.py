@@ -652,12 +652,12 @@ class Voja(LearningRule):
         Node, Ensemble, or Neurons, providing a scalar to multiply with the
         learning rate. Defaults to None, in which case the scalar is 1.0.
     label : string, optional
-        A name for the learning rule.
+        A name for the learning rule. Defaults to None.
 
     Attributes
     ----------
     label : string
-        Given label, or None.
+        The given label.
     filter : float
         The given filter.
     learning_rate : float
