@@ -287,13 +287,13 @@ def test_voja_learning_rule(Simulator, nl_nodirect):
         nengo.Connection(u, a, learning_rule=nengo.Voja(learning_rate=1e-2))
 
     sim = Simulator(m)
-    sim.run(2.)
+    sim.run(3.)
 
     # Check that the first num_change neurons have had their encoders shift
     # to learned_vector, and that the rest stayed the same.
     encoders_after = sim_encoders(sim, a)
     assert np.allclose(encoders_after[:num_change],
-                       [learned_vector] * num_change, atol=0.2)
+                       [learned_vector] * num_change, atol=0.01)
     assert np.allclose(encoders_after[num_change:], encoders[num_change:])
 
 

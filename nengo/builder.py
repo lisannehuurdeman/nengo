@@ -664,7 +664,7 @@ class SimLIFRate(Operator):
 
 
 class SimVoja(Operator):
-    """Simulates Oja's rule in the vector space.
+    """Simulates a simplified version of Oja's rule in the vector space.
 
     Moves the active encoders towards the decoded value. This is a
     straight-forward analog of Oja's rule in the vector space, making it more
@@ -692,8 +692,8 @@ class SimVoja(Operator):
     simplifies to approximately:
         e += outer(y, x - e)
 
-    Which has the nice property that it stabilizes when x = e, so the encoder
-    length is normalized to the length of x.
+    This has the nice property that it stabilizes when x = e (and with same
+    magnitude), which is the behaviour that we really want in the first place.
 
     Parameters
     ----------

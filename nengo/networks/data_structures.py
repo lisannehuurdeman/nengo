@@ -5,7 +5,7 @@ from nengo.utils.distributions import Uniform, UniformHypersphere
 
 
 class Dict(nengo.Network):
-    """Store (key, value) associations, and lookup value by key.
+    """Store (key, value) associations, and lookup the value by key.
 
     The main assumption is that the set of keys is orthonormal. It is currently
     unknown how well this will perform when that assumption is broken.
@@ -24,8 +24,8 @@ class Dict(nengo.Network):
         Specifies how many neurons you would like to fire for a given key.
         This is an approximate target used to optimize the initial tuning
         curves of the memory layer. The effective storage capacity of this
-        dict will be near (n_memory / n_per_item). However, higher values of
-        n_per_item will mean more accurate recall.
+        dict will be near (neurons.n_neurons / n_per_item). However, highe
+        values of n_per_item will mean more accurate recall.
     d_key : int
         Dimensionality of the keys.
     d_value : int
@@ -43,28 +43,28 @@ class Dict(nengo.Network):
         quickly the netork will associate a value with the given key.
     intercept_spread : float, optional
         The radius of uniform randomness to add to the calculated intercepts
-        which are aiming to satisfy n_per_item. Defaults to 0.05.
+        that are aiming to satisfy n_per_item. Defaults to 0.05.
     n_dopamine : int, optional
-        Number of neurons to use in dopamine ensembles. Defaluts to 50.
+        Number of neurons to use in the dopamine ensembles. Defaluts to 50.
         Lower values prevent the learning signal from being consistently
-        transmitted.
+        transmitted when dopamine_filter is small.
     dopamine_strength : float, optional
         Strength of inhibitory signals in dopamine ensembles. Defaults to 20.
     dopamine_filter : float, optional
         Post-synaptic filter for connections from dopamine ensembles. Defaults
         to 0.001. Lower values make changes to the learning input propagate
-        faster to the learning rules.
+        more instantly to the learning rules.
     dopamine_intercepts : Distribution, optional
         Distribution of intercepts for dopamine ensembles. Defaults to
-        Uniform(0.1, 1), in order to ensure that the neurons do not fire
-        when x = 0.
+        Uniform(0.1, 1), which ensures that the neurons do not fire when
+        learning = 0.
     always_learn : bool, optional
         Specifies whether the memory should always be learning from the given
         keys and values. Defaults to False. Connect to the learning Node to
-        make this dynamic (refer to documentation on Network attributes).
+        make this dynamic (refer to the learning attribute documentation).
     voja_disable : bool, optional
         Set to True to disable Voja's rule. This will not break the dict, but
-        it will impact recall accuracy, since some keys might share encoders.
+        it will impact recall accuracy, since some keys may share encoders.
         This is intended for debugging/validation purposes.
 
     Attributes
@@ -80,27 +80,28 @@ class Dict(nengo.Network):
         memory. If the key doesn't exist, then the value will be arbitrary.
     learning : Node
         If always_learn is False (the default), then this is an input node
-        which scales the learning_rate (for voja) and inhibits the error signal
-        (for PES). Set this signal to 0 when you want learning to be turned
-        off (so that lookups can be done regardless of the current value),
-        and to 1 when you want learning to be on (to store associations).
-        Note, accuracy may be slightly better if you can shut off
-        learning a couple ms before lookup begins (not simultaneously),
-        especially if the pes_learning_rate is high.
+        which scales the learning_rate (for Voja) and uninhibits the error
+        signal (for PES). Set this signal to 0 when you want learning to be
+        turned off (so that lookups can be done regardless of the current
+        value), and to 1 when you want learning to be on (to store
+        associations). Note: Accuracy may be slightly better if you can shut
+        off learning a couple ms before lookup begins (not simultaneously),
+        especially if the pes_learning_rate is high. A small dopamine_filter
+        helps make these changes more instantaneous.
     memory : Ensemble
         Layer which stores all of the associations. Its encoders remember the
-        given keys, and its decoders produce the corresponding values.
+        given keys, and its decoders produce their corresponding values.
     bias : Ensemble
-        Bias node that always outputs 1, as input to the nopamine.
+        Bias node that always outputs 1, as input to the nopamine Ensemble.
     dopamine : Ensemble
-        Ensemble holding the learning node's value. Used by voja's rule to
+        Ensemble representing the learning node's value. Used by Voja's rule to
         scale the learning_rate.
     nopamine : Ensemble
         "No dopamine"; 0 when dopamine is sufficiently high, otherwise 1.
     error : Ensemble
         Represents the current error between the given value and the stored
         value. If nopamine is 1 (learning is off), then the error is inhibited
-        to 0, so that PES will not adjust any values.
+        to 0, so that PES will not learn the given value.
     voja : Voja
         Instance of the Voja learning rule.
     pes : PES
@@ -113,7 +114,7 @@ class Dict(nengo.Network):
              n_dopamine=50, dopamine_strength=20, dopamine_filter=0.001,
              dopamine_intercepts=Uniform(0.1, 1), always_learn=False,
              voja_disable=False):
-        if n_per_item < 1:
+        if n_per_item <= 0:
             raise ValueError("n_per_item (%d) must be positive" % n_per_item)
 
         # Create input and output relays
